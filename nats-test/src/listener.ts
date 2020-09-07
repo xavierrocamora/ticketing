@@ -1,5 +1,6 @@
-import { connect, Message, Stan } from 'node-nats-streaming';
+import { connect } from 'node-nats-streaming';
 import { randomBytes } from 'crypto';
+import { TicketCreatedListener } from './events/ticket-created-listener';
 
 console.clear();
 
@@ -18,29 +19,7 @@ stan.on('connect', () => {
     process.exit();
   });
 
-  // set manual acknowledge
-  const options = stan
-    .subscriptionOptions()
-    .setManualAckMode(true)
-    .setDeliverAllAvailable()
-    .setDurableName('accounting-service');
-
-  const subscription = stan.subscribe(
-    'ticket:created',
-    'orders-service-queue-group',
-    options
-  );
-
-  subscription.on('message', (msg) => {
-    const data = msg.getData();
-
-    if (typeof data === 'string') {
-      console.log(`Received event #${msg.getSequence()}, with data: ${data}`);
-    }
-
-    // inform server message process was OK
-    msg.ack();
-  });
+  new TicketCreatedListener(stan).listen();
 });
 
 // allow time to close the connection
@@ -49,49 +28,3 @@ stan.on('connect', () => {
 // might not work in windows OS
 process.on('SIGINT', () => stan.close());
 process.on('SIGTERM', () => stan.close());
-
-abstract class Listener {
-  abstract subject: string;
-  abstract queueGroupName: string;
-  abstract onMessage(data: any, msg: Message): void;
-  private client: Stan;
-  protected ackWait = 5 * 1000;
-
-  constructor(client: Stan) {
-    this.client = client;
-  }
-
-  // Default subscription options
-  subscriptionOptions() {
-    return this.client
-      .subscriptionOptions()
-      .setDeliverAllAvailable()
-      .setManualAckMode(true)
-      .setAckWait(this.ackWait)
-      .setDurableName(this.queueGroupName);
-  }
-
-  // Code to set up the subscription
-  listen() {
-    const subscription = this.client.subscribe(
-      this.subject,
-      this.queueGroupName,
-      this.subscriptionOptions()
-    );
-
-    subscription.on('message', (msg: Message) => {
-      console.log(`Message received: ${this.subject} / ${this.queueGroupName}`);
-
-      const parsedData = this.parseMessage(msg);
-      this.onMessage(parsedData, msg);
-    });
-  }
-
-  // Helper function to parse a message
-  parseMessage(msg: Message) {
-    const data = msg.getData();
-    return typeof data === 'string'
-      ? JSON.parse(data)
-      : JSON.parse(data.toString('utf8'));
-  }
-}
