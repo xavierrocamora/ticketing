@@ -12,6 +12,9 @@ declare global {
   }
 }
 
+// tell jest to use a fake natsWrapper instance
+jest.mock('../nats-wrapper.ts');
+
 let mongo: any;
 // create an instance of mongo in memory,
 // and connect to it, before anything else starts
@@ -31,6 +34,7 @@ beforeAll(async () => {
 // erase the db after each test
 // so it's ready for the next text
 beforeEach(async () => {
+  jest.clearAllMocks();
   const collections = await mongoose.connection.db.collections();
 
   for (let collection of collections) {
